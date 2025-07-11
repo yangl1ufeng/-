@@ -35,6 +35,59 @@ def get_mouth_data():
     with data_lock:
         return mouth_data.copy()
 
+def detect_mouth_position(cap=None):
+    """
+    检测嘴部位置的函数，可以被其他模块调用
+    返回: (is_detected, mouth_center, image_center, offset_x, offset_y)
+    """
+    if cap is None:
+        cap = cv2.VideoCapture(1)
+        should_close = True
+    else:
+        should_close = False
+    
+    try:
+        success, frame = cap.read()
+        if not success:
+            return False, None, None, 0, 0
+        
+        img_h, img_w = frame.shape[:2]
+        image_center = (img_w // 2, img_h // 2)
+        
+        # 转换颜色空间
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        
+        # 检测面部
+        results = face_mesh.process(rgb_frame)
+        
+        if results.multi_face_landmarks:
+            for face_landmarks in results.multi_face_landmarks:
+                # 收集嘴部关键点
+                mouth_points = []
+                for idx in MOUTH_LANDMARKS:
+                    pt = face_landmarks.landmark[idx]
+                    x, y = int(pt.x * img_w), int(pt.y * img_h)
+                    mouth_points.append((x, y))
+                
+                if mouth_points:
+                    # 计算嘴部中心点
+                    mouth_points_array = np.array(mouth_points)
+                    mouth_center_x = int(np.mean(mouth_points_array[:, 0]))
+                    mouth_center_y = int(np.mean(mouth_points_array[:, 1]))
+                    mouth_center = (mouth_center_x, mouth_center_y)
+                    
+                    # 计算偏移量
+                    offset_x = mouth_center_x - image_center[0]  # 正值表示向右偏移
+                    offset_y = mouth_center_y - image_center[1]  # 正值表示向下偏移
+                    
+                    return True, mouth_center, image_center, offset_x, offset_y
+        
+        return False, None, image_center, 0, 0
+    
+    finally:
+        if should_close and cap is not None:
+            cap.release()
+
 # 打开摄像头
 cap = cv2.VideoCapture(1)
 
