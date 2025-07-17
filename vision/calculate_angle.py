@@ -13,6 +13,7 @@ class RobotArmController:
         self.baudrate = baudrate
         self.ser = None
         self.is_feeding = False
+        self.log_callback = None  # 日志回调函数
         
         # 舵机初始位置
         self.servo_init_positions = {
@@ -28,10 +29,17 @@ class RobotArmController:
             2: 45,   # 舵机2
             3: 120,  # 舵机3 不变
             4: 0     # 舵机4
-        }
         
-        # 初始化嘴部检测
+            }
+          # 初始化嘴部检测
         self.init_mouth_detection()
+    
+    def log(self, message, level="INFO"):
+        """输出日志信息"""
+        if self.log_callback:
+            self.log_callback(message, level)
+        else:
+            print(f"[{level}] {message}")
     
     def init_mouth_detection(self):
         """初始化嘴部检测模块"""
@@ -49,28 +57,28 @@ class RobotArmController:
         
         # 摄像头
         self.cap = cv2.VideoCapture(1)
-        
+    
     def connect_serial(self):
         """连接串口"""
         try:
             self.ser = serial.Serial(self.serial_port, self.baudrate, timeout=1)
-            print(f"已连接到 {self.serial_port}，波特率 {self.baudrate}")
+            self.log(f"已连接到 {self.serial_port}，波特率 {self.baudrate}")
             self.ser.reset_input_buffer()
             return True
         except serial.SerialException as e:
-            print(f"串口连接失败: {e}")
+            self.log(f"串口连接失败: {e}", "ERROR")
             return False
     
     def send_servo_command(self, servo_id, angle):
         """发送舵机控制命令"""
         if not self.ser or not self.ser.is_open:
-            print("串口未连接")
+            self.log("串口未连接", "WARNING")
             return False
             
         try:
             cmd = f"set_servo_angle {servo_id} {angle}\r\n"
             self.ser.write(cmd.encode('utf-8'))
-            print(f"发送命令: 舵机{servo_id} -> {angle}度")
+            self.log(f"发送命令: 舵机{servo_id} -> {angle}度")
             
             # 读取响应
             response = ""
@@ -84,23 +92,23 @@ class RobotArmController:
                             break
             
             if response:
-                print(f"舵机响应: {response.strip()}")
+                self.log(f"舵机响应: {response.strip()}")
             
             return True
         except Exception as e:
-            print(f"发送命令失败: {e}")
+            self.log(f"发送命令失败: {e}", "ERROR")
             return False
     
     def initialize_servos(self):
         """初始化所有舵机到初始位置"""
-        print("正在初始化机器臂...")
+        self.log("正在初始化机器臂...")
         for servo_id, angle in self.servo_init_positions.items():
             if self.send_servo_command(servo_id, angle):
                 time.sleep(0.2)  # 每个舵机之间的延时
             else:
-                print(f"舵机{servo_id}初始化失败")
+                self.log(f"舵机{servo_id}初始化失败", "ERROR")
                 return False
-        print("机器臂初始化完成")
+        self.log("机器臂初始化完成")
         return True
     
     def calculate_servo_angles(self, offset_x, offset_y, image_width, image_height):
@@ -143,13 +151,12 @@ class RobotArmController:
         
         # 使用mouth_track模块的检测函数
         is_detected, mouth_center, image_center, offset_x, offset_y = detect_mouth_position(self.cap)
-        
         if is_detected:
-            print(f"检测到嘴部:")
-            print(f"  嘴部中心: {mouth_center}")
-            print(f"  图像中心: {image_center}")
-            print(f"  水平偏移: {offset_x} ({'右' if offset_x > 0 else '左' if offset_x < 0 else '居中'})")
-            print(f"  垂直偏移: {offset_y} ({'下' if offset_y > 0 else '上' if offset_y < 0 else '居中'})")
+            self.log(f"检测到嘴部:")
+            self.log(f"  嘴部中心: {mouth_center}")
+            self.log(f"  图像中心: {image_center}")
+            self.log(f"  水平偏移: {offset_x} ({'右' if offset_x > 0 else '左' if offset_x < 0 else '居中'})")
+            self.log(f"  垂直偏移: {offset_y} ({'下' if offset_y > 0 else '上' if offset_y < 0 else '居中'})")
             
             # 获取图像尺寸用于角度计算
             success, frame = self.cap.read()
